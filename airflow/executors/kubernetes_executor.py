@@ -362,9 +362,18 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
     def process_status(self, pod_id, namespace, status, labels, resource_version, event):
         """Process status response"""
         if status == 'Pending':
+            reason = event.get('object', {}).get('reason')
             if event['type'] == 'DELETED':
                 self.log.info('Event: Failed to start pod %s, will reschedule', pod_id)
                 self.watcher_queue.put((pod_id, namespace, State.UP_FOR_RESCHEDULE, labels, resource_version))
+            elif reason and 'Failed' in reason:
+                self.log.error(
+                    'Event: %s Failed with reason: %s and message: %s\n',
+                    pod_id,
+                    event['reason'],
+                    event['message'],
+                )
+                self.watcher_queue.put((pod_id, namespace, State.FAILED, resource_version))
             else:
                 self.log.info('Event: %s Pending', pod_id)
         elif status == 'Failed':
